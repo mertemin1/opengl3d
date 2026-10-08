@@ -1,195 +1,248 @@
 
 #include <iostream>
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <cmath>
+#include "shader.hpp"
+#include <vector>
+#include <glm/glm.hpp>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <string.h>
 
-const char* vertexShaderSource = R"(
-    #version 330 core
-    layout (location = 0) in vec3 aPos;
-    layout (location = 1) in vec3 aColor;
 
-    out vec3 ourColor;
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <glad/glad.h>
 
-    void main(){
-        gl_Position = vec4(aPos, 1.0f);
-        ourColor = aColor;
-    }
-    )";
+typedef struct Vertex{
+    float position[3];
+    float norm[3];
+    float textureCoords[3];
+} Vertex;    
 
-    const char* fragmentShaderSource = R"(
-    #version 330 core
+typedef struct vertexIndex{ 
+    unsigned int vIndex;
+    unsigned int vtIndex; 
+    unsigned int vnIndex;
+} vertexIndex;
+
+
+typedef struct ObjFile{
+    //vertices
+    std::vector<glm::vec3> v;
+    //vertice texture coordinates
+    std::vector<glm::vec2> vt;
+    //vertice norm
+    std::vector<glm::vec3> vn;
+    //title
+    std::string g;
+    //indices for triangles
+    std::vector<vertexIndex> f;
+} ObjFile;    
+
+
+
+void glfwErrorCallback(int error , const char* desc){ 
+    std::cerr<< error << " : " << desc << std::endl; 
+}    
+
+void glfwFrameBufferSizeCallback(GLFWwindow* window , int width , int height){
+    glViewport(0 , 0 , width , height);
+}    
+
+//placeholder for testing , delete after implementing obj parser
+const char* objfile = R"(
+# Blender Triangulated Cube    
+v 1.000000 1.000000 -1.000000
+v 1.000000 -1.000000 -1.000000
+v 1.000000 1.000000 1.000000
+v 1.000000 -1.000000 1.000000
+v -1.000000 1.000000 -1.000000
+v -1.000000 -1.000000 -1.000000
+v -1.000000 1.000000 1.000000
+v -1.000000 -1.000000 1.000000
+vt 0.625000 0.500000
+vt 0.875000 0.500000
+vt 0.875000 0.750000
+vt 0.625000 0.750000
+vt 0.375000 0.750000
+vt 0.625000 0.000000
+vt 0.375000 1.000000
+vt 0.375000 0.000000
+vt 0.625000 0.250000
+vt 0.125000 0.500000
+vt 0.375000 0.500000
+vt 0.125000 0.750000
+vt 0.375000 0.250000
+vt 0.625000 1.000000
+vn 0.0000 1.0000 0.0000
+vn 0.0000 0.0000 1.0000
+vn -1.0000 0.0000 0.0000
+vn 0.0000 -1.0000 0.0000
+vn 1.0000 0.0000 0.0000
+vn 0.0000 0.0000 -1.0000
+
+#bunu kendim ekledim hata verirse satiri silmeyi dene
+g cube
+
+s off
+f 1/1/1 5/2/1 7/3/1
+f 1/1/1 7/3/1 3/4/1
+f 4/5/2 3/4/2 7/6/2
+f 4/5/2 7/6/2 8/7/2
+f 8/8/3 7/9/3 5/10/3
+f 8/8/3 5/10/3 6/11/3
+f 6/12/4 2/13/4 4/5/4
+f 6/12/4 4/5/4 8/14/4
+f 2/13/5 1/1/5 3/4/5
+f 2/13/5 3/4/5 4/5/5
+f 6/11/6 5/10/6 1/1/6
+f 6/11/6 1/1/6 2/13/6
+)";
+
+
+void readObj(ObjFile &file){
+    std::istringstream fileStream(objfile);
+    std::string line;
     
-    out vec4 fragColor;
-    in vec3 ourColor; 
-    uniform float greenColor;
+    //divide the obj text into lines
+    while(std::getline(fileStream , line)){
+        if(line.empty()) continue;
 
-    void main(){
-        fragColor = vec4(ourColor.x , greenColor , ourColor.y , 1.0f);
+        std::istringstream lineStream(line);
+        std::string prefix;
+        lineStream >> prefix;
+
+        if(prefix == "v"){
+            glm::vec3 v;
+            lineStream >> v.x , v.y , v.z;
+            file.v.push_back(v);
+        }
+        else if(prefix == "vt"){
+            glm::vec2 v;
+            lineStream >> v.x >> v.y;
+            file.vt.push_back(v);
+        }
+        else if(prefix == "vn"){
+            glm::vec3 v;
+            lineStream >> v.x >> v.y >> v.z;
+            file.vn.push_back(v);
+        }
+        else if(prefix == "g"){
+            lineStream >> file.g;
+        }
+        else if (prefix == "f"){
+            std::string s;
+            std::vector<vertexIndex> indices; 
+            while (lineStream >> s){
+                vertexIndex vi;
+                unsigned int matches = std::sscanf(s.c_str() , "%d/%d/%d" ,&vi.vIndex , &vi.vtIndex , &vi.vnIndex );
+                
+                //obj indexes start from 1 
+                if(matches > 1) vi.vIndex -1;
+                if(matches > 2) vi.vtIndex -1;
+                if(matches > 3) vi.vnIndex -1;
+                indices.push_back(vi);
+                if(indices.size() ==  3){
+                    file.f.push_back(indices[0]);
+                    file.f.push_back(indices[1]);
+                    file.f.push_back(indices[2]);
+                }
+                //if the f values aren't for triangles , turn them into triangles
+                else if(indices.size() == 4){
+                    //1st triangle 0 1 2
+                    file.f.push_back(indices[0]);
+                    file.f.push_back(indices[1]);
+                    file.f.push_back(indices[2]);
+                    
+                    //2nd triangle 0 2 3 
+                    file.f.push_back(indices[0]);
+                    file.f.push_back(indices[2]);
+                    file.f.push_back(indices[3]);
+
+                }
+            }
+            
+        }
+
+
     }
-    )";
-
-
-//function that changes viewport when window size gets changed
-void framebufferSizeCallback(GLFWwindow * window , int width , int height){
-        glViewport(0 , 0 , width , height);
-    }
-
-//input handler
-void handleInput(GLFWwindow* window){
-    if( glfwGetKey(window , GLFW_KEY_ESCAPE) == GLFW_PRESS ){
-        glfwSetWindowShouldClose(window , true);
-    }
-}
-
-void errorCallback(int error ,const char* desc){
-    std::cout << "error : " << error << ":" << desc << std::endl;
 }
 int main(){
+    
+    glfwSetErrorCallback(glfwErrorCallback);
+    
+    //init window
+    if(!glfwInit()){
+        std::cerr << "init failed" << std::endl;
+        return -1;
+    }
 
-    //pass the error catcher func to glfw
-    glfwSetErrorCallback(errorCallback);
-
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-
-    GLFWwindow* window = glfwCreateWindow(800 , 600 , "Sea" , NULL , NULL);
-    if (window == NULL){
-        std::cout << "failed to create a glfw window" << std::endl;
-        glfwTerminate();
+    //create the window 
+    GLFWwindow* window = glfwCreateWindow(600 , 800 , "Obj Viewer" , NULL , NULL);
+    if(!window){
+        std::cerr << "window could not be created" << std::endl;
         return -1;
     }
 
     glfwMakeContextCurrent(window);
-
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)){
-        std::cout << " failed to init glad" << std::endl;
+    
+    //init glad
+    if(!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress )){
+        std::cerr << "failed to init glad" << std::endl;
         return -1;
     }
-
-    //tell the opengl the size of window
     glViewport(0 , 0 , 800 , 600);
-
-    //create a function so that when window size gets changed, adjust the viewport
+    glfwSetFramebufferSizeCallback(window , glfwFrameBufferSizeCallback);
     
+    //compile and use the shaders
+    Shader shaderProgram("source/shaders/vertex.txt" , "source/shaders/fragment.txt");
+    shaderProgram.use(); 
 
-    //pass that function to glfw
-    glfwSetFramebufferSizeCallback(window , framebufferSizeCallback);
+
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
 
 
-    //compile the shaders
-    unsigned int vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader , 1 , &vertexShaderSource , NULL);
-    glCompileShader(vertexShader);
 
-    unsigned int fragmentShader;
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-
-    unsigned int shaderProgram;
-    shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram , vertexShader);
-    glAttachShader(shaderProgram , fragmentShader);
-    glLinkProgram(shaderProgram);
-
-    glUseProgram(shaderProgram);
-    
-
-    //triangle data
-    float vertices [] = {
-        0.5f , 0.5f , 0.0f , 1.0f , 0.0f , 0.0f,
-        -0.5f , 0.5f , 0.0f, 0.0f , 0.0f ,1.0f,
-        0.5f , -0.5f , 0.0f, 0.0f , 1.0f , 0.0f,
-        -0.5f , -0.5f , 0.0f, 0.0f , 0.0f , 0.0f
-    };
-    
-    unsigned int indices [] = {
-        0 , 1 , 2,
-        1 , 2 , 3
-    };
-    //init vao and vbo
-
-    unsigned int VBO;
-    glGenBuffers(1 , &VBO);
-    
-    unsigned int EBO;
-    glGenBuffers(1 , &EBO);
-    
-
-    unsigned int VAO;
+    //init buffers
+    unsigned int VBO , EBO , VAO;
     glGenVertexArrays(1 , &VAO);
-    
-    
-    //bind the vao fırst
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    //bind vao first
+    //other bindings and configs in bvo and ebos will be saved into this vao
     glBindVertexArray(VAO);
 
-    //bind vbo
-    glBindBuffer(GL_ARRAY_BUFFER , VBO );
-    glBufferData(GL_ARRAY_BUFFER , sizeof(vertices) , vertices , GL_STATIC_DRAW);
-    
-    //bind veo
+    //bind and upload vertex data (vbo)
+    glBindBuffer(GL_ARRAY_BUFFER , VBO);
+    glBufferData(GL_ARRAY_BUFFER , vertices.size() * sizeof(Vertex), &vertices[0] , GL_STATIC_DRAW);
+
+    // bind and upload index data (ebo)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER , EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER ,  sizeof(indices) , indices , GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER , sizeof(indices)*sizeof(float) , &indices[0] , GL_STATIC_DRAW);
 
-
-    //declare the attr pointer
-    // 0 = index of location data in vertex shader( layout (location = 0) )
-    // 3 = number of elements
-    //GL_FLOAT = data type
-    //GL_FALSE = asks us if we wanna clamp the data between -1 and +1 (our data is already between these two)
-    //3 * sizeof(float) = step length, how many bytes between data of each corner
-    //(void *) 0 = beggining of the data
-    //position
-    glVertexAttribPointer(0 ,3 , GL_FLOAT , GL_FALSE , 3 * sizeof(float) , (void*)0 );
+    //tell opengl how to parse VBO data
+    //location 0 -> position
+    glVertexAttribPointer(0 , 3 , GL_FLOAT , GL_TRUE , 3*(sizeof(float)) , (void*) 0 );
     glEnableVertexAttribArray(0);
 
-    //color
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3* sizeof(float)));
-    glEnableVertexAttribArray(1);
+
+
     
-    glBindVertexArray(0);
 
-
-    //render loop
     while(!glfwWindowShouldClose(window)){
-
-        handleInput(window);
-
-        //clear the screen first
-        glClearColor(0.2f , 0.2f , 0.3f , 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-
-        //activate shader
-        glUseProgram(shaderProgram);
-        
-        float timeValue = glfwGetTime();
-        float greenValue = std::sin(timeValue) / 2.0f + 0.5f;
-        int vertexColorLocation = glGetUniformLocation(shaderProgram , "greenColor");
-        glUniform1f(vertexColorLocation , greenValue);
-        
-        //loads both the settings of vbo and ebo at the same time, render the triangle
+        //keep running
+        glClearColor(0.2f, 0.2f , 0.5f , 1.0f);
+        shaderProgram.use();
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES , 6 , GL_UNSIGNED_INT , 0);
 
-        
-        
-        
-        
-        //pass the buffer to screen , check events
-        glfwSwapBuffers(window);
-        glfwPollEvents();
     }
 
-    //terminate program
 
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+    //terminate glfw
+    glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }

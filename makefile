@@ -1,11 +1,18 @@
-program: main.o glad.o
-	g++ main.o glad.o -o program -lglfw -lGL -ldl -lm -lX11 -lpthread
+CC = g++
+CFLAGS = -Iincludes -std=c++17 -Wall
+LIBS = -lglfw -lGL -ldl -lm -lX11 -lpthread
+
+program: main.o glad.o shader.o
+	$(CC) main.o glad.o shader.o -o program $(LIBS)
 
 main.o: source/main.cpp
-	g++ -Iincludes -DGLFW_INCLUDE_NONE -c source/main.cpp -o main.o
+	$(CC) $(CFLAGS) -c source/main.cpp
+
+shader.o: source/shader.cpp
+	$(CC) $(CFLAGS) -c source/shader.cpp
 
 glad.o: source/glad.c
-	gcc -Iincludes -c source/glad.c -o glad.o
+	gcc $(CFLAGS) -c source/glad.c
 
 clean:
-	rm -f program main.o glad.o
+	rm -f *.o program
