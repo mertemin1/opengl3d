@@ -8,22 +8,29 @@
 #include <fstream>
 #include <sstream>
 #include <string.h>
-
+#include <unordered_map>
+#include <glm/gtx/hash.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 
 typedef struct Vertex{
-    float position[3];
-    float norm[3];
-    float textureCoords[3];
+    glm::vec3 position;
+    glm::vec3 norm;
+    glm::vec2 textureCoords;
 } Vertex;    
 
 typedef struct vertexIndex{ 
     unsigned int vIndex;
     unsigned int vtIndex; 
     unsigned int vnIndex;
+
+    bool operator== (const vertexIndex other) const{
+        return vIndex == other.vIndex && vtIndex == other.vtIndex && vnIndex == other.vnIndex;
+    };
+
+
 } vertexIndex;
 
 
@@ -107,7 +114,7 @@ void readObj(ObjFile &file){
     
     //divide the obj text into lines
     while(std::getline(fileStream , line)){
-        if(line.empty()) continue;
+        if(line.empty() || line[0] == '#') continue;
 
         std::istringstream lineStream(line);
         std::string prefix;
@@ -115,7 +122,7 @@ void readObj(ObjFile &file){
 
         if(prefix == "v"){
             glm::vec3 v;
-            lineStream >> v.x , v.y , v.z;
+            lineStream >> v.x >> v.y >> v.z;
             file.v.push_back(v);
         }
         else if(prefix == "vt"){
@@ -165,10 +172,66 @@ void readObj(ObjFile &file){
             
         }
 
-
+        
     }
 }
+//for debugging, delete later
+void printObj(const ObjFile &file){
+    std::cout << "Group: " << file.g << '\n';
+
+    std::cout << "Vertices (" << file.v.size() << "):\n";
+    for(const auto &v : file.v)
+        std::cout << "  " << v.x << ' ' << v.y << ' ' << v.z << '\n';
+
+    std::cout << "Texture coordinates (" << file.vt.size() << "):\n";
+    for(const auto &vt : file.vt)
+        std::cout << "  " << vt.x << ' ' << vt.y << '\n';
+
+    std::cout << "Normals (" << file.vn.size() << "):\n";
+    for(const auto &vn : file.vn)
+        std::cout << "  " << vn.x << ' ' << vn.y << ' ' << vn.z << '\n';
+
+    std::cout << "Face indices (" << file.f.size() << "):\n";
+    for(const auto &face : file.f)
+        std::cout << "  " << face.vIndex << '/' << face.vtIndex << '/' << face.vnIndex << '\n';
+}
+
+void createVertices(ObjFile& file){
+    Vertex v; 
+    
+    std::vector<unsigned int> ebo;
+    //there may be different vertices in a single coordinate. change glm::vec3 to vertexIndex and make changes accordingly
+    std::unordered_map<glm::vec3 , unsigned int> dict;
+    int counter = 0;
+    
+    for(int i = 0 ; i < file.f.size() ; i++){
+        //create the vertex
+        v.position = file.v[file.f[i].vIndex];
+        v.norm = file.vn[file.f[i].vnIndex];
+        v.textureCoords = file.vt[file.f[i].vtIndex];
+        
+        //add to the hash map
+        auto [it , isAdded] = dict.try_emplace(v.position , counter);
+        if(isAdded){
+            ebo.push_back(counter);
+            counter++;
+        }
+        else{
+            ebo.push_back(it->second);
+        }
+    }
+
+}
+
+
+
+
+
 int main(){
+
+    ObjFile obj;
+    readObj(obj);
+    printObj(obj);
     
     glfwSetErrorCallback(glfwErrorCallback);
     
@@ -203,8 +266,7 @@ int main(){
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
 
-
-
+    
     //init buffers
     unsigned int VBO , EBO , VAO;
     glGenVertexArrays(1 , &VAO);
