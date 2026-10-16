@@ -19,8 +19,19 @@ typedef struct Vertex{
     glm::vec3 position;
     glm::vec3 norm;
     glm::vec2 textureCoords;
+
+    //need to define == operator overload for hashing , default does the job
+    bool operator==(const Vertex& other) const {
+        return position == other.position &&
+        norm == other.norm && 
+        textureCoords == other.textureCoords;
+
+    }
+
 } Vertex;    
 
+
+//used to get the data from the f value on obj files
 typedef struct vertexIndex{ 
     unsigned int vIndex;
     unsigned int vtIndex; 
@@ -46,6 +57,28 @@ typedef struct ObjFile{
     //indices for triangles
     std::vector<vertexIndex> f;
 } ObjFile;    
+
+//add a hash template for vertex
+template <>
+struct std::hash<Vertex>{
+     size_t operator()(const Vertex& v) const noexcept{ 
+        std::hash<glm::vec3> hash3;
+        std::hash<glm::vec2> hash2;
+
+        size_t h1 = hash3(v.position);
+        size_t h2 = hash3(v.norm);
+        size_t h3 = hash2(v.textureCoords);
+
+        size_t seed = 0;
+        //industry standard for hash combining I guess, also that number is the golden ratio idfk 
+        seed ^= h1 + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= h2 + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= h3 + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        
+        return seed;
+    
+    }
+};
 
 
 
@@ -201,17 +234,21 @@ void createVertices(ObjFile& file){
     
     std::vector<unsigned int> ebo;
     //there may be different vertices in a single coordinate. change glm::vec3 to vertexIndex and make changes accordingly
-    std::unordered_map<glm::vec3 , unsigned int> dict;
+    std::unordered_map<Vertex , unsigned int> dict;
     int counter = 0;
     
     for(int i = 0 ; i < file.f.size() ; i++){
+        
         //create the vertex
-        v.position = file.v[file.f[i].vIndex];
+        v.position = file.v[file.f[i].vIndex];        
         v.norm = file.vn[file.f[i].vnIndex];
         v.textureCoords = file.vt[file.f[i].vtIndex];
         
+        
+        
         //add to the hash map
-        auto [it , isAdded] = dict.try_emplace(v.position , counter);
+        //check if the vertex has already been added inside the ebo to avoid drawing the same vertex twice
+        auto [it , isAdded] = dict.try_emplace(v);
         if(isAdded){
             ebo.push_back(counter);
             counter++;
