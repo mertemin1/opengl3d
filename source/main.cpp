@@ -178,10 +178,10 @@ void readObj(ObjFile &file){
                 vertexIndex vi;
                 unsigned int matches = std::sscanf(s.c_str() , "%d/%d/%d" ,&vi.vIndex , &vi.vtIndex , &vi.vnIndex );
                 
-                //obj indexes start from 1 
-                if(matches > 1) vi.vIndex -1;
-                if(matches > 2) vi.vtIndex -1;
-                if(matches > 3) vi.vnIndex -1;
+                
+                if(matches > 0) --vi.vIndex;
+                if(matches > 1) --vi.vtIndex;
+                if(matches > 2) --vi.vnIndex;
                 indices.push_back(vi);
                 if(indices.size() ==  3){
                     file.f.push_back(indices[0]);
@@ -229,13 +229,9 @@ void printObj(const ObjFile &file){
         std::cout << "  " << face.vIndex << '/' << face.vtIndex << '/' << face.vnIndex << '\n';
 }
 
-void createVertices(ObjFile& file){
+void createVertices(ObjFile& file, std::vector<Vertex>& vertices, std::vector<unsigned int>& ebo){
     Vertex v; 
-    
-    std::vector<unsigned int> ebo;
-    //there may be different vertices in a single coordinate. change glm::vec3 to vertexIndex and make changes accordingly
-    std::unordered_map<Vertex , unsigned int> dict;
-    int counter = 0;
+    std::unordered_map<Vertex, unsigned int> dict;
     
     for(int i = 0 ; i < file.f.size() ; i++){
         
@@ -248,16 +244,37 @@ void createVertices(ObjFile& file){
         
         //add to the hash map
         //check if the vertex has already been added inside the ebo to avoid drawing the same vertex twice
-        auto [it , isAdded] = dict.try_emplace(v);
+        auto [it, isAdded] = dict.try_emplace(v, static_cast<unsigned int>(vertices.size()));
         if(isAdded){
-            ebo.push_back(counter);
-            counter++;
+            vertices.push_back(v);
+            ebo.push_back(it->second);
         }
         else{
             ebo.push_back(it->second);
         }
     }
 
+}
+
+void testCreateVertices(ObjFile& file){
+    std::vector<Vertex> vbo;
+    std::vector<unsigned int> ebo;
+    createVertices(file, vbo, ebo);
+
+    std::cout << "VBO (" << vbo.size() << "):\n";
+    for(const auto& vertex : vbo){
+        std::cout << "  position: " << vertex.position.x << ' ' << vertex.position.y << ' '
+                  << vertex.position.z << ", normal: " << vertex.norm.x << ' '
+                  << vertex.norm.y << ' ' << vertex.norm.z << ", texture: "
+                  << vertex.textureCoords.x << ' ' << vertex.textureCoords.y << '\n';
+    }
+
+    std::cout << "EBO (" << ebo.size() << "):\n  ";
+    for(size_t i = 0; i < ebo.size(); ++i){
+        if(i > 0) std::cout << ' ';
+        std::cout << ebo[i];
+    }
+    std::cout << '\n';
 }
 
 
@@ -269,6 +286,7 @@ int main(){
     ObjFile obj;
     readObj(obj);
     printObj(obj);
+    testCreateVertices(obj);
     
     glfwSetErrorCallback(glfwErrorCallback);
     
