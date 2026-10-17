@@ -93,14 +93,14 @@ void glfwFrameBufferSizeCallback(GLFWwindow* window , int width , int height){
 //placeholder for testing , delete after implementing obj parser
 const char* objfile = R"(
 # Blender Triangulated Cube    
-v 1.000000 1.000000 -1.000000
-v 1.000000 -1.000000 -1.000000
-v 1.000000 1.000000 1.000000
-v 1.000000 -1.000000 1.000000
-v -1.000000 1.000000 -1.000000
-v -1.000000 -1.000000 -1.000000
-v -1.000000 1.000000 1.000000
-v -1.000000 -1.000000 1.000000
+v 0.500000 0.500000 -0.500000
+v 0.500000 -0.500000 -0.500000
+v 0.500000 0.500000 0.500000
+v 0.500000 -0.500000 0.500000
+v -0.500000 0.500000 -0.500000
+v -0.500000 -0.500000 -0.500000
+v -0.500000 0.500000 0.500000
+v -0.500000 -0.500000 0.500000
 vt 0.625000 0.500000
 vt 0.875000 0.500000
 vt 0.875000 0.750000
@@ -233,12 +233,12 @@ void createVertices(ObjFile& file, std::vector<Vertex>& vertices, std::vector<un
     Vertex v; 
     std::unordered_map<Vertex, unsigned int> dict;
     
-    for(int i = 0 ; i < file.f.size() ; i++){
+    for(auto i : file.f){
         
         //create the vertex
-        v.position = file.v[file.f[i].vIndex];        
-        v.norm = file.vn[file.f[i].vnIndex];
-        v.textureCoords = file.vt[file.f[i].vtIndex];
+        v.position = file.v[i.vIndex];        
+        v.norm = file.vn[i.vnIndex];
+        v.textureCoords = file.vt[i.vtIndex];
         
         
         
@@ -256,10 +256,9 @@ void createVertices(ObjFile& file, std::vector<Vertex>& vertices, std::vector<un
 
 }
 
-void testCreateVertices(ObjFile& file){
-    std::vector<Vertex> vbo;
-    std::vector<unsigned int> ebo;
-    createVertices(file, vbo, ebo);
+void testCreateVertices(std::vector<Vertex>& vbo, std::vector<unsigned int>& ebo){
+
+
 
     std::cout << "VBO (" << vbo.size() << "):\n";
     for(const auto& vertex : vbo){
@@ -282,12 +281,13 @@ void testCreateVertices(ObjFile& file){
 
 
 int main(){
-
+    std::vector<Vertex> vbo;
+    std::vector<unsigned int>ebo;
     ObjFile obj;
     readObj(obj);
     printObj(obj);
-    testCreateVertices(obj);
-    
+    createVertices(obj, vbo, ebo);
+    testCreateVertices(vbo , ebo);
     glfwSetErrorCallback(glfwErrorCallback);
     
     //init window
@@ -318,9 +318,6 @@ int main(){
     shaderProgram.use(); 
 
 
-    std::vector<Vertex> vertices;
-    std::vector<unsigned int> indices;
-
     
     //init buffers
     unsigned int VBO , EBO , VAO;
@@ -332,29 +329,35 @@ int main(){
     //other bindings and configs in bvo and ebos will be saved into this vao
     glBindVertexArray(VAO);
 
+
     //bind and upload vertex data (vbo)
     glBindBuffer(GL_ARRAY_BUFFER , VBO);
-    glBufferData(GL_ARRAY_BUFFER , vertices.size() * sizeof(Vertex), &vertices[0] , GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER , vbo.size() * sizeof(Vertex), vbo.data() , GL_STATIC_DRAW);
 
     // bind and upload index data (ebo)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER , EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER , sizeof(indices)*sizeof(float) , &indices[0] , GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER , ebo.size() * sizeof(unsigned int) , ebo.data() , GL_STATIC_DRAW);
 
     //tell opengl how to parse VBO data
     //location 0 -> position
-    glVertexAttribPointer(0 , 3 , GL_FLOAT , GL_TRUE , 3*(sizeof(float)) , (void*) 0 );
+    glVertexAttribPointer(0 , 3 , GL_FLOAT ,GL_FALSE , (sizeof(Vertex)) , (void*) 0 );
     glEnableVertexAttribArray(0);
 
+    glBindVertexArray(0);
 
 
     
 
     while(!glfwWindowShouldClose(window)){
-        //keep running
         glClearColor(0.2f, 0.2f , 0.5f , 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
         shaderProgram.use();
         glBindVertexArray(VAO);
 
+        glDrawElements(GL_TRIANGLES , ebo.size() , GL_UNSIGNED_INT , 0);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
 
