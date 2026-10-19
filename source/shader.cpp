@@ -1,4 +1,7 @@
 #include "shader.hpp"
+
+float Shader::aspectRatio = 800.0f / 600.0f;
+
 Shader::Shader(const char* vertexPath , const char* fragmentPath){
 
     //read the shaders from files

@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unordered_map>
 #include <glm/gtx/hash.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -86,8 +88,20 @@ void glfwErrorCallback(int error , const char* desc){
     std::cerr<< error << " : " << desc << std::endl; 
 }    
 
-void glfwFrameBufferSizeCallback(GLFWwindow* window , int width , int height){
+//gets called when the window dimentions change
+void glfwFrameBufferSizeCallback(GLFWwindow* window , int width , int height ){
     glViewport(0 , 0 , width , height);
+    Shader::aspectRatio = (float)width/ (float)height;
+    
+    Shader* activeShader = (Shader*)glfwGetWindowUserPointer(window);
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), Shader::aspectRatio, 0.1f, 100.0f);
+    activeShader->use();
+    
+    //we get the address of the projection matrice of our shader in the gpu
+    int projLoc = glGetUniformLocation(activeShader -> ID , "projection");
+    //then update that value with our new projection variable
+    glUniformMatrix4fv(projLoc , 1  , GL_FALSE , glm::value_ptr(projection) );
+
 }    
 
 //placeholder for testing , delete after implementing obj parser
@@ -311,12 +325,17 @@ int main(){
         return -1;
     }
     glViewport(0 , 0 , 800 , 600);
-    glfwSetFramebufferSizeCallback(window , glfwFrameBufferSizeCallback);
     
     //compile and use the shaders
     Shader shaderProgram("source/shaders/vertex.txt" , "source/shaders/fragment.txt");
     shaderProgram.use(); 
+    
+    //add the framebuffercallback the shader object address to be able to access it from the callback function
+    glfwSetWindowUserPointer(window , &shaderProgram);
+    
+    glfwSetFramebufferSizeCallback(window , glfwFrameBufferSizeCallback);
 
+   
 
     
     //init buffers
@@ -345,13 +364,43 @@ int main(){
 
     glBindVertexArray(0);
 
-
+    glEnable(GL_DEPTH_TEST);
     
 
     while(!glfwWindowShouldClose(window)){
         glClearColor(0.2f, 0.2f , 0.5f , 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         shaderProgram.use();
+
+        //matrices
+
+        //location and the rotation of the ball
+        glm::mat4 model = glm::mat4(1.0f);
+        //third parameter defines the axis for the model to rotate, imagine it like a imaginary stick that goes through the model
+        model = glm::rotate(model , (float)glfwGetTime() * glm::radians(30.0f) , glm::vec3( 1.0f , 0.5f , 0.0f));
+
+        //camera matrix
+        //since there are 16 values in a 4x4 matrix, glm gives us a translate method that puts the x y z values in the correct places
+        glm::mat4 view = glm::mat4 (1.0f);
+        view = glm::translate(view , glm::vec3(0.0f , 0.0f , -3.0f));
+
+        //projection matrice, handles the perspective
+        glm::mat4 projection = glm::mat4(1.0f);
+        projection = glm::perspective(glm::radians(45.0f), Shader::aspectRatio, 0.1f, 100.0f);
+
+
+        //find the location of the uniform in the shader
+        int modelLoc = glGetUniformLocation(shaderProgram.ID, "model");
+        // send the matrice
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
+        int viewLoc = glGetUniformLocation(shaderProgram.ID, "view");
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
+        int projLoc = glGetUniformLocation(shaderProgram.ID, "projection");
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+
+
         glBindVertexArray(VAO);
 
         glDrawElements(GL_TRIANGLES , ebo.size() , GL_UNSIGNED_INT , 0);
