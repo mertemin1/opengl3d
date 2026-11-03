@@ -1,8 +1,9 @@
-
+\
 #include <iostream>
 #include <cmath>
 #include "shader.hpp"
 #include <vector>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <string>
 #include <fstream>
@@ -104,59 +105,12 @@ void glfwFrameBufferSizeCallback(GLFWwindow* window , int width , int height ){
 
 }    
 
-//placeholder for testing , delete after implementing obj parser
-const char* objfile = R"(
-# Blender Triangulated Cube    
-v 0.500000 0.500000 -0.500000
-v 0.500000 -0.500000 -0.500000
-v 0.500000 0.500000 0.500000
-v 0.500000 -0.500000 0.500000
-v -0.500000 0.500000 -0.500000
-v -0.500000 -0.500000 -0.500000
-v -0.500000 0.500000 0.500000
-v -0.500000 -0.500000 0.500000
-vt 0.625000 0.500000
-vt 0.875000 0.500000
-vt 0.875000 0.750000
-vt 0.625000 0.750000
-vt 0.375000 0.750000
-vt 0.625000 0.000000
-vt 0.375000 1.000000
-vt 0.375000 0.000000
-vt 0.625000 0.250000
-vt 0.125000 0.500000
-vt 0.375000 0.500000
-vt 0.125000 0.750000
-vt 0.375000 0.250000
-vt 0.625000 1.000000
-vn 0.0000 1.0000 0.0000
-vn 0.0000 0.0000 1.0000
-vn -1.0000 0.0000 0.0000
-vn 0.0000 -1.0000 0.0000
-vn 1.0000 0.0000 0.0000
-vn 0.0000 0.0000 -1.0000
-
-#bunu kendim ekledim hata verirse satiri silmeyi dene
-g cube
-
-s off
-f 1/1/1 5/2/1 7/3/1
-f 1/1/1 7/3/1 3/4/1
-f 4/5/2 3/4/2 7/6/2
-f 4/5/2 7/6/2 8/7/2
-f 8/8/3 7/9/3 5/10/3
-f 8/8/3 5/10/3 6/11/3
-f 6/12/4 2/13/4 4/5/4
-f 6/12/4 4/5/4 8/14/4
-f 2/13/5 1/1/5 3/4/5
-f 2/13/5 3/4/5 4/5/5
-f 6/11/6 5/10/6 1/1/6
-f 6/11/6 1/1/6 2/13/6
-)";
-
-
-void readObj(ObjFile &file){
-    std::istringstream fileStream(objfile);
+bool readObj(const std::string& path, ObjFile &file){
+    std::ifstream fileStream(path);
+    if(!fileStream){
+        std::cerr << "Could not open OBJ file: " << path << std::endl;
+        return false;
+    }
     std::string line;
     
     //divide the obj text into lines
@@ -221,28 +175,8 @@ void readObj(ObjFile &file){
 
         
     }
+    return true;
 }
-//for debugging, delete later
-void printObj(const ObjFile &file){
-    std::cout << "Group: " << file.g << '\n';
-
-    std::cout << "Vertices (" << file.v.size() << "):\n";
-    for(const auto &v : file.v)
-        std::cout << "  " << v.x << ' ' << v.y << ' ' << v.z << '\n';
-
-    std::cout << "Texture coordinates (" << file.vt.size() << "):\n";
-    for(const auto &vt : file.vt)
-        std::cout << "  " << vt.x << ' ' << vt.y << '\n';
-
-    std::cout << "Normals (" << file.vn.size() << "):\n";
-    for(const auto &vn : file.vn)
-        std::cout << "  " << vn.x << ' ' << vn.y << ' ' << vn.z << '\n';
-
-    std::cout << "Face indices (" << file.f.size() << "):\n";
-    for(const auto &face : file.f)
-        std::cout << "  " << face.vIndex << '/' << face.vtIndex << '/' << face.vnIndex << '\n';
-}
-
 void createVertices(ObjFile& file, std::vector<Vertex>& vertices, std::vector<unsigned int>& ebo){
     Vertex v; 
     std::unordered_map<Vertex, unsigned int> dict;
@@ -270,38 +204,18 @@ void createVertices(ObjFile& file, std::vector<Vertex>& vertices, std::vector<un
 
 }
 
-void testCreateVertices(std::vector<Vertex>& vbo, std::vector<unsigned int>& ebo){
-
-
-
-    std::cout << "VBO (" << vbo.size() << "):\n";
-    for(const auto& vertex : vbo){
-        std::cout << "  position: " << vertex.position.x << ' ' << vertex.position.y << ' '
-                  << vertex.position.z << ", normal: " << vertex.norm.x << ' '
-                  << vertex.norm.y << ' ' << vertex.norm.z << ", texture: "
-                  << vertex.textureCoords.x << ' ' << vertex.textureCoords.y << '\n';
+int main(int argc, char** argv){
+    if(argc != 2){
+        std::cerr << "Usage: " << argv[0] << " <file.obj>" << std::endl;
+        return -1;
     }
 
-    std::cout << "EBO (" << ebo.size() << "):\n  ";
-    for(size_t i = 0; i < ebo.size(); ++i){
-        if(i > 0) std::cout << ' ';
-        std::cout << ebo[i];
-    }
-    std::cout << '\n';
-}
-
-
-
-
-
-int main(){
     std::vector<Vertex> vbo;
     std::vector<unsigned int>ebo;
     ObjFile obj;
-    readObj(obj);
-    printObj(obj);
+    if(!readObj(argv[1], obj))
+        return -1;
     createVertices(obj, vbo, ebo);
-    testCreateVertices(vbo , ebo);
     glfwSetErrorCallback(glfwErrorCallback);
     
     //init window
